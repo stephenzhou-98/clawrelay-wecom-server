@@ -365,7 +365,7 @@ class CommandRouter:
             user_id: 用户ID
 
         Returns:
-            (消息JSON字符串, StreamManager实例或None) 元组
+            (消息JSON字符串, None) 元组
         """
         import unicodedata
         import re
