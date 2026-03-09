@@ -40,7 +40,7 @@ def _friendly_error(e: Exception) -> str:
     return f"抱歉，处理出错，请稍后重试。如问题持续，请联系管理员。"
 
 # 节流间隔(秒)
-STREAM_THROTTLE_INTERVAL = 0.5
+STREAM_THROTTLE_INTERVAL = 0.3
 
 
 class MessageDispatcher:

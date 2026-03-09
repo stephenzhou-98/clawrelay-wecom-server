@@ -123,7 +123,20 @@ class ClaudeRelayOrchestrator:
 
             accumulated_text = ""
             tool_names_seen: set[str] = set()
+            thinking_lines: list[str] = ["🤔 正在思考中..."]
+            thinking_buf = ""
             effective_system_prompt = self._build_effective_system_prompt(is_new_session)
+
+            # 构建 session URL 链接（每次消息都展示）
+            session_url = f"{self.adapter.relay_url}/session/{relay_session_id}"
+            session_link = f"📎 查看实时聊天记录：[链接>>]({session_url})"
+
+            # 立即推送初始状态（thinking + session link），不等 AI 返回
+            if on_stream_delta:
+                await on_stream_delta(
+                    self._build_display_content(thinking_lines, thinking_buf, session_link, ""),
+                    False,
+                )
 
             async for event in self.adapter.stream_chat(
                 messages, effective_system_prompt, session_id=relay_session_id
@@ -131,10 +144,18 @@ class ClaudeRelayOrchestrator:
                 if isinstance(event, TextDelta):
                     accumulated_text += event.text
                     if on_stream_delta:
-                        await on_stream_delta(accumulated_text, False)
+                        await on_stream_delta(
+                            self._build_display_content(thinking_lines, thinking_buf, session_link, accumulated_text),
+                            False,
+                        )
 
                 elif isinstance(event, ThinkingDelta):
-                    logger.debug(f"[ClaudeRelay] 思考中: {event.text[:80]}")
+                    thinking_buf += event.text
+                    if on_stream_delta:
+                        await on_stream_delta(
+                            self._build_display_content(thinking_lines, thinking_buf, session_link, accumulated_text),
+                            False,
+                        )
 
                 elif isinstance(event, AskUserQuestionEvent):
                     logger.info(
@@ -146,7 +167,13 @@ class ClaudeRelayOrchestrator:
                 elif isinstance(event, ToolUseStart):
                     if event.name not in tool_names_seen:
                         tool_names_seen.add(event.name)
+                        thinking_lines.append(f"🔧 **{event.name}**")
                         logger.info(f"[ClaudeRelay] 工具调用: {event.name}")
+                        if on_stream_delta:
+                            await on_stream_delta(
+                                self._build_display_content(thinking_lines, thinking_buf, session_link, accumulated_text),
+                                False,
+                            )
 
             if not accumulated_text or not accumulated_text.strip():
                 logger.warning("[ClaudeRelay] Claude Code返回空回复，使用默认文本")
@@ -161,13 +188,16 @@ class ClaudeRelayOrchestrator:
                 self.bot_key, effective_key, relay_session_id
             )
 
-            if is_new_session:
-                session_url = f"{self.adapter.relay_url}/session/{relay_session_id}"
-                accumulated_text += f"\n\n📎 查看实时聊天记录：[链接>>]({session_url})"
+            # 完成时添加完成标记
+            thinking_lines.append("✨ 回复完成")
+            final_display = self._build_display_content(thinking_lines, thinking_buf, session_link, accumulated_text)
 
             # 通知完成
             if on_stream_delta:
-                await on_stream_delta(accumulated_text, True)
+                await on_stream_delta(final_display, True)
+
+            # 日志中记录含 session link 的完整文本
+            accumulated_text = f"{session_link}\n\n{accumulated_text}"
 
             latency_ms = int((time.time() - start_time) * 1000)
             log_context['session_key'] = effective_key
@@ -273,7 +303,20 @@ class ClaudeRelayOrchestrator:
 
             accumulated_text = ""
             tool_names_seen: set[str] = set()
+            thinking_lines: list[str] = ["🤔 正在思考中..."]
+            thinking_buf = ""
             effective_system_prompt = self._build_effective_system_prompt(is_new_session)
+
+            # 构建 session URL 链接
+            session_url = f"{self.adapter.relay_url}/session/{relay_session_id}"
+            session_link = f"📎 查看实时聊天记录：[链接>>]({session_url})"
+
+            # 立即推送初始状态
+            if on_stream_delta:
+                await on_stream_delta(
+                    self._build_display_content(thinking_lines, thinking_buf, session_link, ""),
+                    False,
+                )
 
             async for event in self.adapter.stream_chat(
                 messages, effective_system_prompt, session_id=relay_session_id
@@ -281,13 +324,27 @@ class ClaudeRelayOrchestrator:
                 if isinstance(event, TextDelta):
                     accumulated_text += event.text
                     if on_stream_delta:
-                        await on_stream_delta(accumulated_text, False)
+                        await on_stream_delta(
+                            self._build_display_content(thinking_lines, thinking_buf, session_link, accumulated_text),
+                            False,
+                        )
                 elif isinstance(event, ThinkingDelta):
-                    logger.debug(f"[ClaudeRelay] 思考中: {event.text[:80]}")
+                    thinking_buf += event.text
+                    if on_stream_delta:
+                        await on_stream_delta(
+                            self._build_display_content(thinking_lines, thinking_buf, session_link, accumulated_text),
+                            False,
+                        )
                 elif isinstance(event, ToolUseStart):
                     if event.name not in tool_names_seen:
                         tool_names_seen.add(event.name)
+                        thinking_lines.append(f"🔧 **{event.name}**")
                         logger.info(f"[ClaudeRelay] 工具调用: {event.name}")
+                        if on_stream_delta:
+                            await on_stream_delta(
+                                self._build_display_content(thinking_lines, thinking_buf, session_link, accumulated_text),
+                                False,
+                            )
 
             if not accumulated_text or not accumulated_text.strip():
                 logger.warning("[ClaudeRelay] Claude Code返回空回复，使用默认文本")
@@ -302,12 +359,13 @@ class ClaudeRelayOrchestrator:
                 self.bot_key, effective_key, relay_session_id
             )
 
-            if is_new_session:
-                session_url = f"{self.adapter.relay_url}/session/{relay_session_id}"
-                accumulated_text += f"\n\n📎 查看实时聊天记录：[链接>>]({session_url})"
+            thinking_lines.append("✨ 回复完成")
+            final_display = self._build_display_content(thinking_lines, thinking_buf, session_link, accumulated_text)
 
             if on_stream_delta:
-                await on_stream_delta(accumulated_text, True)
+                await on_stream_delta(final_display, True)
+
+            accumulated_text = f"{session_link}\n\n{accumulated_text}"
 
             latency_ms = int((time.time() - start_time) * 1000)
             log_context['session_key'] = effective_key
@@ -381,6 +439,27 @@ class ClaudeRelayOrchestrator:
         if header:
             return [{"type": "text", "text": header}] + content_blocks
         return content_blocks
+
+    @staticmethod
+    def _build_display_content(
+        thinking_lines: list,
+        thinking_buf: str,
+        session_link: str,
+        text: str,
+    ) -> str:
+        """构建组合展示内容: <think>block</think> + session_link + text"""
+        parts = []
+        if thinking_lines or thinking_buf:
+            lines = list(thinking_lines)
+            if thinking_buf:
+                preview = thinking_buf[-200:]
+                prefix = "..." if len(thinking_buf) > 200 else ""
+                lines.append(f"💭 {prefix}{preview}")
+            parts.append("<think>\n" + "\n".join(lines) + "\n</think>")
+        parts.append(session_link)
+        if text:
+            parts.append(text)
+        return "\n\n".join(parts)
 
     @staticmethod
     def _extract_text_from_blocks(content_blocks: List[dict]) -> str:
