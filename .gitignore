@@ -3,6 +3,9 @@
 .env.*
 !.env.example
 
+# Bot 配置（包含 bot_id/secret 等凭据）
+config/bots.yaml
+
 # Python
 __pycache__/
 *.py[cod]

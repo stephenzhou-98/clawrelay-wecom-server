@@ -54,6 +54,7 @@ git clone https://github.com/wxkingstar/clawrelay-wecom-server.git
 cd clawrelay-wecom-server
 
 # 编辑配置（Docker 中不支持交互式向导，需提前填写）
+cp config/bots.yaml.example config/bots.yaml
 vim config/bots.yaml
 
 docker compose up -d
@@ -76,7 +77,7 @@ docker compose down           # 停止
 | **零外部依赖** | 无数据库，YAML 配置 + 内存会话 + JSONL 日志 |
 | **首次配置向导** | 启动即引导，无需手动编辑配置文件 |
 | **多机器人** | 一个服务托管多个机器人，YAML 中加一段配置即可 |
-| **流式回复** | 500ms 节流推送，实时展示 AI 回复 |
+| **流式回复** | 300ms 节流推送，实时展示 AI 回复和思考过程 |
 | **多模态** | 文本 / 图片 / 语音 / 文件 / 图文混排 |
 | **会话管理** | 2h 自动过期，发送 `reset` 或 `new` 手动重置 |
 | **自定义命令** | 模块化扩展，动态加载 |
@@ -175,7 +176,7 @@ def register_commands(command_router):
 clawrelay-wecom-server/
 ├── main.py                              # 入口（asyncio，per-bot WebSocket）
 ├── config/
-│   ├── bots.yaml                       # 机器人配置
+│   ├── bots.yaml.example               # 机器人配置模板（复制为 bots.yaml 使用）
 │   └── bot_config.py                   # 配置加载 & 首次向导
 ├── src/
 │   ├── adapters/
@@ -222,7 +223,7 @@ clawrelay-wecom-server/
     │                        │
     │                        ├── 获取/创建会话
     │                        ├── SSE 流式调用 clawrelay-api
-    │                        ├── 500ms 节流推送回复
+    │                        ├── 300ms 节流推送回复
     │                        └── 记录聊天日志
     │
     ├── voice ──> 语音转文字 → 同 text

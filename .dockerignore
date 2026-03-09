@@ -1,6 +1,8 @@
 .git
 .gitignore
 .env
+.env.*
+config/bots.yaml
 *.pyc
 __pycache__
 *.pyo

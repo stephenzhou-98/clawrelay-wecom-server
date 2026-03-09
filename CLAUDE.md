@@ -27,7 +27,7 @@ Enterprise WeChat ←WSS→ main.py (asyncio) → clawrelay-api (Go :50009) → 
 
 **Key modules:**
 - `main.py` — Entry point, bot lifecycle management
-- `config/bots.yaml` — Bot configuration (credentials, relay URL, prompts)
+- `config/bots.yaml.example` — Bot configuration template (copy to `bots.yaml` to use)
 - `src/transport/ws_client.py` — WebSocket connection, heartbeat, reconnect
 - `src/transport/message_dispatcher.py` — Message routing, throttled stream push
 - `src/core/claude_relay_orchestrator.py` — SSE orchestration with clawrelay-api
@@ -37,7 +37,7 @@ Enterprise WeChat ←WSS→ main.py (asyncio) → clawrelay-api (Go :50009) → 
 
 ## Configuration
 
-- Bot config in `config/bots.yaml` (YAML format, no database required)
+- Bot config in `config/bots.yaml` (YAML format, gitignored, created by setup wizard or copied from `bots.yaml.example`)
 - Sessions stored in memory (2h TTL, auto-reset on restart)
 - Chat logs written to `logs/chat.jsonl` (JSONL format)
 - Environment variables loaded via `python-dotenv`, system env vars take priority
