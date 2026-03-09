@@ -69,7 +69,7 @@ class WsClient:
                 logger.info("[WsClient:%s] 收到取消信号，退出", self.bot_key)
                 break
             except Exception as e:
-                logger.error("[WsClient:%s] 连接异常: %s", self.bot_key, e)
+                logger.error("[WsClient:%s] 连接异常: %s: %s", self.bot_key, type(e).__name__, e)
                 await self._reconnect()
 
     async def stop(self):
