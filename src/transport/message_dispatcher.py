@@ -165,9 +165,14 @@ class MessageDispatcher:
         stop_msg = re.sub(r'[^\w\u4e00-\u9fff]', '', normalized)
         if stop_msg in ("stop", "停止", "暂停", "停"):
             from src.core.task_registry import get_task_registry
-            cancelled = get_task_registry().cancel(f"{self.bot_key}:{session_key}")
+            cancelled, old_stream_id, extra = get_task_registry().cancel(f"{self.bot_key}:{session_key}")
             if cancelled:
-                await self._reply_text(req_id, "已停止当前任务。", finish=True)
+                # 用旧 stream 的 req_id + stream_id finish 旧消息气泡
+                old_req_id = extra.get("req_id")
+                if old_stream_id and old_req_id:
+                    await self._reply_stream(old_req_id, old_stream_id, "⏹ 任务已被用户停止。", finish=True)
+                # 回复 stop 命令本身
+                await self._reply_text(req_id, "⏹ 已停止当前任务。", finish=True)
             else:
                 await self._reply_text(req_id, "当前没有正在运行的任务。", finish=True)
             return
@@ -204,18 +209,17 @@ class MessageDispatcher:
         }
         on_stream_delta = self._make_stream_delta_callback(req_id, stream_id)
 
-        try:
-            await self.orchestrator.handle_text_message(
+        await self._run_with_task_registry(
+            req_id, stream_id, session_key,
+            self.orchestrator.handle_text_message(
                 user_id=user_id,
                 message=content,
                 stream_id=stream_id,
                 session_key=session_key,
                 log_context=log_context,
                 on_stream_delta=on_stream_delta,
-            )
-        except Exception as e:
-            logger.error("[Dispatcher:%s] 处理文本消息失败: %s", self.bot_key, e, exc_info=True)
-            await self._reply_stream(req_id, stream_id, _friendly_error(e), finish=True)
+            ),
+        )
 
     async def _handle_image(self, req_id: str, body: dict, user_id: str, session_key: str, chattype: str):
         """处理图片消息"""
@@ -241,18 +245,17 @@ class MessageDispatcher:
         log_context = {'chat_type': chattype, 'message_type': 'image'}
         on_stream_delta = self._make_stream_delta_callback(req_id, stream_id)
 
-        try:
-            await self.orchestrator.handle_multimodal_message(
+        await self._run_with_task_registry(
+            req_id, stream_id, session_key,
+            self.orchestrator.handle_multimodal_message(
                 user_id=user_id,
                 content_blocks=content_blocks,
                 stream_id=stream_id,
                 session_key=session_key,
                 log_context=log_context,
                 on_stream_delta=on_stream_delta,
-            )
-        except Exception as e:
-            logger.error("[Dispatcher:%s] 处理图片消息失败: %s", self.bot_key, e, exc_info=True)
-            await self._reply_stream(req_id, stream_id, _friendly_error(e), finish=True)
+            ),
+        )
 
     async def _handle_voice(self, req_id: str, body: dict, user_id: str, session_key: str, chattype: str):
         """处理语音消息（已转为文本）"""
@@ -294,8 +297,9 @@ class MessageDispatcher:
         log_context = {'chat_type': chattype, 'message_type': 'file', 'file_info': [{'filename': file_name}]}
         on_stream_delta = self._make_stream_delta_callback(req_id, stream_id)
 
-        try:
-            await self.orchestrator.handle_file_message(
+        await self._run_with_task_registry(
+            req_id, stream_id, session_key,
+            self.orchestrator.handle_file_message(
                 user_id=user_id,
                 message=message,
                 files=[file_data],
@@ -303,10 +307,8 @@ class MessageDispatcher:
                 session_key=session_key,
                 log_context=log_context,
                 on_stream_delta=on_stream_delta,
-            )
-        except Exception as e:
-            logger.error("[Dispatcher:%s] 处理文件消息失败: %s", self.bot_key, e, exc_info=True)
-            await self._reply_stream(req_id, stream_id, _friendly_error(e), finish=True)
+            ),
+        )
 
     async def _handle_mixed(self, req_id: str, body: dict, user_id: str, session_key: str, chattype: str):
         """处理图文混排消息"""
@@ -347,18 +349,17 @@ class MessageDispatcher:
         log_context = {'chat_type': chattype, 'message_type': 'mixed'}
         on_stream_delta = self._make_stream_delta_callback(req_id, stream_id)
 
-        try:
-            await self.orchestrator.handle_multimodal_message(
+        await self._run_with_task_registry(
+            req_id, stream_id, session_key,
+            self.orchestrator.handle_multimodal_message(
                 user_id=user_id,
                 content_blocks=content_blocks,
                 stream_id=stream_id,
                 session_key=session_key,
                 log_context=log_context,
                 on_stream_delta=on_stream_delta,
-            )
-        except Exception as e:
-            logger.error("[Dispatcher:%s] 处理混排消息失败: %s", self.bot_key, e, exc_info=True)
-            await self._reply_stream(req_id, stream_id, _friendly_error(e), finish=True)
+            ),
+        )
 
     # ---- 事件回调 ----
 
@@ -454,6 +455,30 @@ class MessageDispatcher:
                 state['throttle_task'] = asyncio.create_task(delayed_push())
 
         return on_stream_delta
+
+    # ---- 任务管理 ----
+
+    async def _run_with_task_registry(
+        self, req_id: str, stream_id: str, session_key: str, coro,
+    ):
+        """将 orchestrator 协程包装为 task 并注册到全局任务表，支持 stop 命令取消。
+
+        超时后任务继续后台运行，完成时主动推送结果给用户。
+        """
+        from src.core.task_registry import get_task_registry
+
+        inner_task = asyncio.create_task(coro)
+        task_key = f"{self.bot_key}:{session_key}"
+        get_task_registry().register(task_key, inner_task, stream_id, req_id=req_id)
+
+        try:
+            await inner_task
+        except asyncio.CancelledError:
+            # 被用户 stop 命令取消，_handle_stop 已处理旧消息气泡
+            logger.info("[Dispatcher:%s] 任务被用户取消: session_key=%s", self.bot_key, session_key)
+        except Exception as e:
+            logger.error("[Dispatcher:%s] AI 处理异常: %s", self.bot_key, e, exc_info=True)
+            await self._reply_stream(req_id, stream_id, _friendly_error(e), finish=True)
 
     # ---- 回复辅助方法 ----
 

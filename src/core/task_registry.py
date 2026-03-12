@@ -19,14 +19,18 @@ class TaskRegistry:
     def __init__(self):
         self._tasks: dict[str, asyncio.Task] = {}
         self._stream_ids: dict[str, str] = {}
+        self._extra: dict[str, dict] = {}  # 额外元数据（如 req_id）
         self._lock = threading.Lock()
         logger.info("[TaskRegistry] 初始化完成")
 
-    def register(self, key: str, task: asyncio.Task, stream_id: str):
+    def register(self, key: str, task: asyncio.Task, stream_id: str, **extra):
         """注册任务
 
         若已有旧任务（已完成），直接覆盖。
         通过 done_callback 自动清理完成的任务。
+
+        Args:
+            extra: 额外元数据，如 req_id（WebSocket 模式需要用旧 req_id 更新消息气泡）
         """
         with self._lock:
             old = self._tasks.get(key)
@@ -35,6 +39,7 @@ class TaskRegistry:
 
             self._tasks[key] = task
             self._stream_ids[key] = stream_id
+            self._extra[key] = extra
 
         def _cleanup(t: asyncio.Task, _key=key):
             with self._lock:
@@ -42,27 +47,29 @@ class TaskRegistry:
                 if self._tasks.get(_key) is t:
                     del self._tasks[_key]
                     self._stream_ids.pop(_key, None)
+                    self._extra.pop(_key, None)
                     logger.debug("[TaskRegistry] 自动清理完成任务: key=%s", _key)
 
         task.add_done_callback(_cleanup)
         logger.info("[TaskRegistry] 注册任务: key=%s, stream_id=%s", key, stream_id)
 
-    def cancel(self, key: str) -> tuple[bool, Optional[str]]:
+    def cancel(self, key: str) -> tuple[bool, Optional[str], dict]:
         """取消任务
 
         Returns:
-            (是否成功取消, 对应的 stream_id)
+            (是否成功取消, 对应的 stream_id, 额外元数据)
         """
         with self._lock:
             task = self._tasks.get(key)
             stream_id = self._stream_ids.get(key)
+            extra = self._extra.get(key, {})
 
             if not task or task.done():
-                return False, None
+                return False, None, {}
 
             task.cancel()
             logger.info("[TaskRegistry] 取消任务: key=%s, stream_id=%s", key, stream_id)
-            return True, stream_id
+            return True, stream_id, extra
 
     def is_running(self, key: str) -> bool:
         """检查是否有运行中任务"""
