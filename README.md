@@ -246,6 +246,8 @@ clawrelay-wecom-server/
 | 项目 | 说明 |
 |------|------|
 | [clawrelay-api](https://github.com/roodkcab/clawrelay-api) | Go 编写的 Claude Code 中转 API（本项目的后端依赖） |
+| [clawrelay-weixin-server](https://github.com/wxkingstar/clawrelay-weixin-server) | 微信个人版连接器（`npx clawrelay-weixin-server` 一键启动） |
+| [clawrelay-feishu-server](https://github.com/wxkingstar/clawrelay-feishu-server) | 飞书连接器 |
 
 ---
 
