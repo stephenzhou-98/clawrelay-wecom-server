@@ -35,6 +35,7 @@ class SessionManager:
         entry = self._sessions.get(key)
 
         if not entry:
+            logger.info("[SessionManager] get: key=%s → 无记录", key)
             return ""
 
         elapsed = time.monotonic() - entry["last_active"]
@@ -43,11 +44,14 @@ class SessionManager:
             del self._sessions[key]
             return ""
 
-        return entry.get("relay_session_id", "")
+        sid = entry.get("relay_session_id", "")
+        logger.info("[SessionManager] get: key=%s → session_id=%s", key, sid)
+        return sid
 
     async def save_relay_session_id(self, bot_key: str, user_id: str, relay_session_id: str):
         """保存 relay_session_id"""
         key = f"{bot_key}_{user_id}"
+        logger.info("[SessionManager] save: key=%s → session_id=%s", key, relay_session_id)
         self._sessions[key] = {
             "relay_session_id": relay_session_id,
             "last_active": time.monotonic(),
@@ -56,5 +60,6 @@ class SessionManager:
     async def clear_session(self, bot_key: str, user_id: str):
         """清空会话"""
         key = f"{bot_key}_{user_id}"
+        old = self._sessions.get(key, {}).get("relay_session_id", "")
         self._sessions.pop(key, None)
-        logger.info("清空会话: %s", key)
+        logger.info("[SessionManager] clear: key=%s, 删除了旧 session_id=%s", key, old)

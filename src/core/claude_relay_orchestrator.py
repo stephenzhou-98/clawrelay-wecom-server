@@ -157,7 +157,7 @@ class ClaudeRelayOrchestrator:
                 )
 
             async for event in self.adapter.stream_chat(
-                messages, effective_system_prompt, session_id=relay_session_id
+                messages, effective_system_prompt, session_id=relay_session_id, new_session=is_new_session
             ):
                 if isinstance(event, TextDelta):
                     # 工具调用后的新 assistant 消息，插入换行分隔
@@ -347,7 +347,7 @@ class ClaudeRelayOrchestrator:
                 )
 
             async for event in self.adapter.stream_chat(
-                messages, effective_system_prompt, session_id=relay_session_id
+                messages, effective_system_prompt, session_id=relay_session_id, new_session=is_new_session
             ):
                 if isinstance(event, TextDelta):
                     # 工具调用后的新 assistant 消息，插入换行分隔

@@ -122,6 +122,7 @@ class ClaudeRelayAdapter:
         messages: list[dict],
         system_prompt: str = "",
         session_id: str = "",
+        new_session: bool = False,
     ) -> AsyncGenerator[StreamEvent, None]:
         """流式聊天请求
 
@@ -132,6 +133,7 @@ class ClaudeRelayAdapter:
             messages: 消息列表，content 可以是字符串或 content blocks 数组
             system_prompt: 系统提示词（可选，会prepend到messages中）
             session_id: 会话ID（可选，非空时启用服务端会话管理，自动resume）
+            new_session: 是否为新会话（新会话用--session-id，续接用--resume）
 
         Yields:
             StreamEvent: TextDelta | ThinkingDelta | ToolUseStart | AskUserQuestionEvent
@@ -156,6 +158,7 @@ class ClaudeRelayAdapter:
         }
         if session_id:
             request_body["session_id"] = session_id
+            request_body["new_session"] = new_session
         if self.env_vars:
             request_body["env_vars"] = self.env_vars
 

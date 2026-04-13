@@ -173,6 +173,17 @@ class MessageDispatcher:
             await self._reply_text(req_id, "会话已重置，可以开始新的对话。", finish=True)
             return
 
+        # 查看历史会话
+        if normalized in ("sessions", "history", "历史", "会话列表"):
+            await self._handle_sessions_command(req_id, session_key)
+            return
+
+        # 加载指定会话: load <session_id> 或 加载 <session_id>
+        if normalized.startswith(("load ", "加载 ")):
+            target_sid = content.strip()[5:].strip() if normalized.startswith("load ") else content.strip()[3:].strip()
+            await self._handle_load_command(req_id, session_key, target_sid)
+            return
+
         # 停止任务命令
         import re
         stop_msg = re.sub(r'[^\w\u4e00-\u9fff]', '', normalized)
@@ -242,6 +253,71 @@ class MessageDispatcher:
                 log_context=log_context,
                 on_stream_delta=on_stream_delta,
             ),
+        )
+
+    async def _handle_sessions_command(self, req_id: str, session_key: str):
+        """查询 clawrelay-api 的历史会话列表"""
+        import aiohttp
+        url = f"{self.orchestrator.adapter.relay_url}/sessions"
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
+                async with session.get(url) as resp:
+                    if resp.status != 200:
+                        await self._reply_text(req_id, "获取会话列表失败，请稍后重试。", finish=True)
+                        return
+                    sessions = await resp.json()
+
+            if not sessions:
+                await self._reply_text(req_id, "暂无历史会话记录。", finish=True)
+                return
+
+            # 按修改时间倒序，取最近 10 个
+            sessions.sort(key=lambda s: s.get("modified", ""), reverse=True)
+            sessions = sessions[:10]
+
+            # 当前会话
+            current_sid = await self.session_manager.get_relay_session_id(self.bot_key, session_key)
+
+            lines = ["📋 **最近会话列表**（最新在前）\n"]
+            for i, s in enumerate(sessions, 1):
+                sid = s.get("session_id", "")
+                modified = s.get("modified", "")[:16].replace("T", " ")
+                marker = " ← 当前" if sid == current_sid else ""
+                lines.append(f"`{i}`. `{sid[:8]}...` {modified}{marker}")
+
+            lines.append("\n💡 发送 `load <序号>` 或 `load <完整session_id>` 加载指定会话")
+            await self._reply_text(req_id, "\n".join(lines), finish=True)
+
+            # 缓存序号映射
+            self._last_sessions_list = [s.get("session_id", "") for s in sessions]
+
+        except Exception as e:
+            logger.error("[Dispatcher:%s] 获取会话列表失败: %s", self.bot_key, e)
+            await self._reply_text(req_id, "获取会话列表失败，请检查服务状态。", finish=True)
+
+    async def _handle_load_command(self, req_id: str, session_key: str, target: str):
+        """加载指定的历史会话"""
+        if not target:
+            await self._reply_text(req_id, "用法: `load <序号>` 或 `load <session_id>`", finish=True)
+            return
+
+        # 尝试按序号查找
+        session_id = target
+        if target.isdigit():
+            idx = int(target) - 1
+            cached = getattr(self, '_last_sessions_list', [])
+            if 0 <= idx < len(cached):
+                session_id = cached[idx]
+            else:
+                await self._reply_text(req_id, f"无效序号: {target}。请先发送 `sessions` 查看列表。", finish=True)
+                return
+
+        # 保存到 session_manager，下一条消息将使用此 session_id（走 --resume）
+        await self.session_manager.save_relay_session_id(self.bot_key, session_key, session_id)
+        await self._reply_text(
+            req_id,
+            f"✅ 已加载会话: `{session_id[:8]}...`\n下一条消息将继续此会话的上下文。",
+            finish=True,
         )
 
     async def _handle_quote_in_text(

@@ -34,9 +34,15 @@ class HelpCommandHandler(CommandHandler):
     """帮助命令处理器"""
 
     def handle(self, cmd: str, stream_id: str, user_id: str) -> tuple[str, None]:
-        help_text = """🤖 **ClawRelay Bot - Demo Commands**
+        help_text = """🤖 **ClawRelay Bot - 命令列表**
 
-📝 **Basic:**
+📋 **会话管理:**
+• `sessions` / `历史` - 查看历史会话列表
+• `load <序号>` / `加载 <序号>` - 加载指定历史会话
+• `reset` / `重置` - 重置当前会话
+• `stop` / `停止` - 停止当前任务
+
+📝 **Demo:**
 • `hello` - Greeting
 • `文本` - Text reply (Markdown)
 
