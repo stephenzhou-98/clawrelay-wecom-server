@@ -77,8 +77,11 @@ class MessageDispatcher:
             env_vars=bot_config.env_vars or None,
         )
 
-        # 会话管理
+        # 会话管理（Dispatcher 与 Orchestrator 共享同一实例）
         self.session_manager = SessionManager()
+
+        # 将共享的 session_manager 注入 orchestrator
+        self.orchestrator.session_manager = self.session_manager
 
         # 加载自定义命令
         self._load_custom_commands()
@@ -169,6 +172,13 @@ class MessageDispatcher:
 
         # 重置会话命令
         if normalized in ("reset", "new", "clear", "重置", "清空"):
+            # 先取消正在运行的任务，防止完成后回写旧 session_id
+            from src.core.task_registry import get_task_registry
+            cancelled, old_stream_id, extra = get_task_registry().cancel(f"{self.bot_key}:{session_key}")
+            if cancelled:
+                old_req_id = extra.get("req_id")
+                if old_stream_id and old_req_id:
+                    await self._reply_stream(old_req_id, old_stream_id, "⏹ 会话已重置，任务已停止。", finish=True)
             await self.session_manager.clear_session(self.bot_key, session_key)
             await self._reply_text(req_id, "会话已重置，可以开始新的对话。", finish=True)
             return

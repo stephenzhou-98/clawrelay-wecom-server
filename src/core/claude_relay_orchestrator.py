@@ -60,6 +60,7 @@ class ClaudeRelayOrchestrator:
         model: str = "",
         system_prompt: str = "",
         env_vars: Optional[Dict[str, str]] = None,
+        session_manager: Optional["SessionManager"] = None,
     ):
         logger.info(
             f"开始初始化ClaudeRelay编排器: bot_key={bot_key}, "
@@ -69,7 +70,7 @@ class ClaudeRelayOrchestrator:
         self.bot_key = bot_key
         self.system_prompt = system_prompt
         self.adapter = ClaudeRelayAdapter(relay_url, model, working_dir, env_vars=env_vars)
-        self.session_manager = SessionManager()
+        self.session_manager = session_manager or SessionManager()
 
         logger.info(f"ClaudeRelay编排器初始化完成: bot_key={bot_key}")
 
